@@ -17,7 +17,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_community.docstore.document import Document
 from langchain_community.vectorstores import FAISS
-import torch
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
@@ -37,13 +36,6 @@ class ModelAnswer(BaseModel):
     confidence: int
 
 pydantic_parser = PydanticOutputParser(pydantic_object=ModelAnswer)
-
-def load_embeddings():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={"device": device}
-    )
 
 # ---------- Utility helpers ----------
 def sha256_bytes(data: bytes) -> str:
