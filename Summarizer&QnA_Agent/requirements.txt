@@ -31,3 +31,7 @@ opencv-python-headless
 # Ensure compatibility
 pydantic>=2.0
 
+torch>=2.2.0
+transformers>=4.40.0
+sentence-transformers>=2.7.0
+
