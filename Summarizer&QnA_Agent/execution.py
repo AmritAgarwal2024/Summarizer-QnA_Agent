@@ -12,6 +12,19 @@ from engine import (
 from pathlib import Path
 import os
 
+# Load secrets into environment variables (for LangChain & LLMs)
+import os, streamlit as st
+
+if "GOOGLE_API_KEY" in st.secrets:
+    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+
+if "OPENROUTER_API_KEY" in st.secrets:
+    os.environ["OPENROUTER_API_KEY"] = st.secrets["OPENROUTER_API_KEY"]
+
+if "COHERE_API_KEY" in st.secrets:
+    os.environ["COHERE_API_KEY"] = st.secrets["COHERE_API_KEY"]
+
+
 st.set_page_config(page_title="Financial Report Q&A Assistant", layout="wide")
 st.title("📊 Financial Report Q&A Assistant (Demo)")
 
