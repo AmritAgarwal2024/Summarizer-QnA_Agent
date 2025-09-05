@@ -25,6 +25,37 @@ from langchain_google_genai import GoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_cohere import ChatCohere
 
+# ---------- Default Model Config ----------
+MODEL_CONFIG = {
+    "gemini": {
+        "class": GoogleGenerativeAI,
+        "args": {
+            "model": "gemini-2.5-flash",
+            "temperature": 0.1,
+            "api_key_env": "GOOGLE_API_KEY"
+        }
+    },
+    "deepseek": {
+        "class": ChatOpenAI,
+        "args": {
+            "model": "deepseek/deepseek-chat",
+            "temperature": 0.1,
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key_env": "OPENROUTER_API_KEY"
+        }
+    },
+    "cohere": {
+        "class": ChatCohere,
+        "args": {
+            "model": "command-r-plus",
+            "temperature": 0.1,
+            "api_key_env": "COHERE_API_KEY"
+        }
+    }
+}
+
+
+
 # ---------- Config (modify if needed) ----------
 EMBEDDING_MODEL_NAME_DEFAULT = "sentence-transformers/all-MiniLM-L6-v2"  # recommended for speed
 VECTORSTORE_DIR = Path("vectorstores")
@@ -36,6 +67,12 @@ class ModelAnswer(BaseModel):
     confidence: int
 
 pydantic_parser = PydanticOutputParser(pydantic_object=ModelAnswer)
+
+# ---------- Reconciler Schema ----------
+class ReconcilerOutput(BaseModel):
+    answer: str = Field(..., description="The final reconciled answer")
+    confidence: int = Field(..., description="Confidence score (0-100)")
+
 
 # ---------- Utility helpers ----------
 def sha256_bytes(data: bytes) -> str:
