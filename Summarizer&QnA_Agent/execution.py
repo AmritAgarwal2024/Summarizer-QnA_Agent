@@ -109,7 +109,7 @@ if st.session_state.retriever and st.session_state.chains is None:
         st.success("✅ Models & chains initialized.")
 
 # Run full analysis (calls get_verified_response per task)
-from utils import market_snapshot_md
+from engine import market_snapshot_md
 
 if run_analysis_btn:
     if not st.session_state.retriever:
