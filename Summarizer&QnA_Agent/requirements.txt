@@ -6,7 +6,7 @@ numpy==1.26.4
 # PDF
 pypdf==4.3.1
 
-# LangChain ecosystem
+# LangChain
 langchain==0.2.16
 langchain-community==0.2.16
 langchain-text-splitters==0.2.2
