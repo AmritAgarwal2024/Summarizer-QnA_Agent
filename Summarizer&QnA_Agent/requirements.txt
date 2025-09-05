@@ -1,0 +1,16 @@
+streamlit
+langchain
+langchain_community
+langchain_core
+pypdf
+pymupdf
+faiss-cpu
+sentence-transformers
+langchain-google-genai
+langchain-openai
+langchain-cohere
+python-dotenv
+yfinance
+tiktoken
+unstructured[all-docs]
+rank_bm25
