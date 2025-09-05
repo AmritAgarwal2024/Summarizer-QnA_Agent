@@ -1,20 +1,25 @@
 # execution.py
 
 import streamlit as st
-from typing import Dict
+import tempfile
+from pathlib import Path
+import os
 
 from engine import (
     MODEL_CONFIG,
+    create_or_load_vectorstore,
     initialize_models_and_chains,
     get_verified_response,
+    market_snapshot_md,
+    ReconcilerOutput
 )
+
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
-from engine import ReconcilerOutput
 
 
 # --------------------------
-# Default settings
+# Defaults
 # --------------------------
 embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 chunk_size = 1500
@@ -38,7 +43,6 @@ Answer:
 """
 )
 
-# Parser for strict JSON reconciliation
 parser = PydanticOutputParser(pydantic_object=ReconcilerOutput)
 
 reconciler_prompt = PromptTemplate(
@@ -60,54 +64,131 @@ Provide the best consolidated answer as JSON.
 # --------------------------
 # Streamlit UI
 # --------------------------
-st.title("📊 Financial Report Q&A Assistant")
+st.set_page_config(page_title="Financial Report Q&A Assistant", layout="wide")
+st.title("📊 Financial Report Q&A Assistant (Demo)")
 
-# Upload section
-uploaded_file = st.file_uploader("Upload a company's annual report (PDF)", type=["pdf"])
+# Sidebar
+with st.sidebar:
+    st.header("Upload & Settings")
+    uploaded_file = st.file_uploader("Upload Annual Report (PDF)", type=["pdf"])
+    ticker = st.text_input("Stock Ticker", value="RELIANCE.NS")
+    st.markdown("---")
+    st.subheader("Model toggles")
+    use_gemini = st.checkbox("Gemini (Google)", value=True)
+    use_deepseek = st.checkbox("DeepSeek (OpenRouter)", value=True)
+    use_cohere = st.checkbox("Cohere", value=True)
+    st.markdown("---")
+    run_analysis_btn = st.button("📊 Generate Full Analysis")
+    st.write("")
+    st.subheader("Q&A")
+    question_input = st.text_input("Ask a question from the uploaded report")
+    ask_btn = st.button("💬 Ask")
 
-if uploaded_file is not None:
-    st.success(f"Uploaded: {uploaded_file.name}")
 
-    # Initialize retriever + models
-    if "retriever" not in st.session_state:
-        from engine import create_or_load_vectorstore
+# --------------------------
+# Session state
+# --------------------------
+if "retriever" not in st.session_state:
+    st.session_state.retriever = None
+if "chains" not in st.session_state:
+    st.session_state.chains = None
+if "reconciler" not in st.session_state:
+    st.session_state.reconciler = None
+if "pdf_path" not in st.session_state:
+    st.session_state.pdf_path = None
+
+
+# --------------------------
+# Handle PDF upload
+# --------------------------
+if uploaded_file is not None and st.session_state.retriever is None:
+    with st.spinner("Processing PDF & building vectorstore (this may take a moment)..."):
+        t = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        t.write(uploaded_file.read())
+        t.flush()
+        t.close()
+        st.session_state.pdf_path = t.name
 
         retriever = create_or_load_vectorstore(
-            uploaded_file.name,
+            t.name,
             embedding_model=embedding_model,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             k=k,
         )
         st.session_state.retriever = retriever
+        st.success("✅ Vectorstore ready (cached by PDF hash).")
 
-        # Initialize model chains
+
+# --------------------------
+# Initialize models & chains
+# --------------------------
+if st.session_state.retriever and st.session_state.chains is None:
+    with st.spinner("Initializing LLMs and RAG chains..."):
+        # build config dynamically based on toggles
+        model_subset = {}
+        if use_gemini:
+            model_subset["gemini"] = MODEL_CONFIG["gemini"]
+        if use_deepseek:
+            model_subset["deepseek"] = MODEL_CONFIG["deepseek"]
+        if use_cohere:
+            model_subset["cohere"] = MODEL_CONFIG["cohere"]
+
         chains, reconciler = initialize_models_and_chains(
-            MODEL_CONFIG, st.session_state.retriever, qa_prompt, reconciler_prompt
+            model_subset, st.session_state.retriever, qa_prompt, reconciler_prompt
         )
         st.session_state.chains = chains
         st.session_state.reconciler = reconciler
+        st.success("✅ Models & chains initialized.")
+
+
+# --------------------------
+# Full analysis
+# --------------------------
+if run_analysis_btn:
+    if not st.session_state.retriever:
+        st.warning("Upload a PDF first.")
+    else:
+        st.subheader("📈 Company Snapshot")
+        st.markdown(market_snapshot_md(ticker))
+        st.subheader("🔎 Automated Analysis")
+        for title, instructions in {
+            "Growth Analysis": "Find current and previous year 'Revenue' and 'EBITDA'/'EBIT' and compute YoY growth.",
+            "Profitability Analysis": "Calculate margins and DuPont ROE.",
+            "Liquidity and Solvency": "Current & Quick ratio, interest cover, net debt/EBITDA.",
+            "Efficiency and Working Capital": "CCC, DIO, DSO, DPO.",
+            "Cash Flow and Dividends": "FCF and payout ratio."
+        }.items():
+            with st.expander(title):
+                final, per_model = get_verified_response(
+                    instructions, st.session_state.retriever, st.session_state.chains, st.session_state.reconciler
+                )
+                try:
+                    parsed_result = parser.parse(final)
+                    st.markdown(parsed_result.answer)
+                    st.caption(f"Confidence: {parsed_result.confidence}")
+                except Exception as e:
+                    st.markdown(final)
+                    st.error(f"Parser failed: {e}")
+
+                if st.checkbox(f"Show per-model answers for {title}", key=f"show_models_{title}"):
+                    for m, ma in per_model.items():
+                        st.markdown(f"**{m}** (confidence: {ma.confidence})\n\n{ma.answer}")
 
 
 # --------------------------
 # Q&A Section
 # --------------------------
-st.header("Ask a question")
-question_input = st.text_input("Type your question here")
-ask_btn = st.button("Ask")
-
-if ask_btn and question_input:
-    if not st.session_state.get("retriever"):
-        st.warning("Please upload a PDF first.")
+if ask_btn:
+    if not st.session_state.retriever:
+        st.warning("Upload a PDF first.")
+    elif not question_input.strip():
+        st.warning("Enter a question.")
     else:
-        # Get model responses + reconciliation
-        final, per_model = get_verified_response(
-            question_input,
-            st.session_state.retriever,
-            st.session_state.chains,
-            st.session_state.reconciler,
-        )
-
+        with st.spinner("Querying models..."):
+            final, per_model = get_verified_response(
+                question_input, st.session_state.retriever, st.session_state.chains, st.session_state.reconciler
+            )
         try:
             parsed_result = parser.parse(final)
             final_answer = parsed_result.answer
@@ -117,12 +198,10 @@ if ask_btn and question_input:
             confidence = "N/A"
             st.error(f"Parser failed, showing raw output. Error: {e}")
 
-        # Show result
-        st.subheader("Answer")
+        st.subheader("✅ Verified Answer")
         st.markdown(final_answer)
         st.caption(f"Confidence: {confidence}")
 
-        # Expand for per-model answers
-        with st.expander("See per-model answers"):
+        if st.checkbox("Show per-model answers", key="show_per_model_q"):
             for m, ma in per_model.items():
                 st.markdown(f"**{m}** (confidence: {ma.confidence})\n\n{ma.answer}")
