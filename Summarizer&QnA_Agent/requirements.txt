@@ -1,16 +1,33 @@
-streamlit
+# Core LangChain + integrations
 langchain
 langchain_community
 langchain_core
-pypdf
-pymupdf
-faiss-cpu
-sentence-transformers
 langchain-google-genai
 langchain-openai
 langchain-cohere
-python-dotenv
+
+# Data handling
+pandas
 yfinance
-tiktoken
+pypdf
+pymupdf
 unstructured[all-docs]
 rank_bm25
+faiss-cpu
+
+# Embeddings
+sentence-transformers
+
+# Streamlit UI
+streamlit
+
+# PDF & Text utils
+python-docx
+tiktoken
+
+# Fix ImportError: use headless version (no libGL dependency)
+opencv-python-headless
+
+# Ensure compatibility
+pydantic>=2.0
+
