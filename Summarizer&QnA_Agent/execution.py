@@ -1,6 +1,9 @@
-# app.py
+# execution.py (formerly app.py)
 import streamlit as st
 import tempfile
+from pathlib import Path
+import os
+
 from engine import (
     create_or_load_vectorstore,
     initialize_models_and_chains,
@@ -9,12 +12,9 @@ from engine import (
     EMBEDDING_MODEL_NAME_DEFAULT,
     ModelAnswer
 )
-from pathlib import Path
-import os
+from langchain.prompts import PromptTemplate
 
 # Load secrets into environment variables (for LangChain & LLMs)
-import os, streamlit as st
-
 if "GOOGLE_API_KEY" in st.secrets:
     os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
@@ -23,7 +23,6 @@ if "OPENROUTER_API_KEY" in st.secrets:
 
 if "COHERE_API_KEY" in st.secrets:
     os.environ["COHERE_API_KEY"] = st.secrets["COHERE_API_KEY"]
-
 
 st.set_page_config(page_title="Financial Report Q&A Assistant", layout="wide")
 st.title("📊 Financial Report Q&A Assistant (Demo)")
@@ -55,6 +54,12 @@ if "reconciler" not in st.session_state:
 if "pdf_path" not in st.session_state:
     st.session_state.pdf_path = None
 
+# Default vectorstore settings
+embedding_model = EMBEDDING_MODEL_NAME_DEFAULT
+chunk_size = 1500
+chunk_overlap = 100
+k = 5
+
 # Handle upload => create/reuse vectorstore
 if uploaded_file is not None and st.session_state.retriever is None:
     with st.spinner("Processing PDF & building vectorstore (this may take a moment)..."):
@@ -79,7 +84,6 @@ if uploaded_file is not None and st.session_state.retriever is None:
 # Initialize models & chains (lazy)
 if st.session_state.retriever and st.session_state.chains is None:
     with st.spinner("Initializing LLMs and RAG chains..."):
-        # build a model_config subset based on toggles (re-use original MODEL_CONFIG like structure)
         MODEL_CONFIG = {}
         if use_gemini:
             MODEL_CONFIG["gemini"] = {
@@ -96,15 +100,23 @@ if st.session_state.retriever and st.session_state.chains is None:
                 "class": __import__("langchain_cohere", fromlist=["ChatCohere"]).ChatCohere,
                 "args": {"model":"command-r-plus", "temperature":0.1, "api_key_env":"COHERE_API_KEY"}
             }
-        chains, reconciler = initialize_models_and_chains(MODEL_CONFIG, st.session_state.retriever, None, None)
-        # initialize_models_and_chains expects prompt templates; in this demo, we call chains.invoke(question) directly
+
+        # Define prompt templates
+        qa_prompt = PromptTemplate.from_template(
+            "You are a financial assistant. Use the context below to answer the question.\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"
+        )
+        reconciler_prompt = PromptTemplate.from_template(
+            "You are reconciling multiple model answers.\n\nQuestion: {question}\n\nContext: {context}\n\nAnswers:\n{all_answers}\n\nProvide the best final answer:"
+        )
+
+        chains, reconciler = initialize_models_and_chains(
+            MODEL_CONFIG, st.session_state.retriever, qa_prompt, reconciler_prompt
+        )
         st.session_state.chains = chains
         st.session_state.reconciler = reconciler
         st.success("✅ Models & chains initialized.")
 
-# Run full analysis (calls get_verified_response per task)
-from engine import market_snapshot_md
-
+# Run full analysis
 if run_analysis_btn:
     if not st.session_state.retriever:
         st.warning("Upload a PDF first.")
@@ -127,17 +139,14 @@ if run_analysis_btn:
                     for m, ma in per_model.items():
                         st.markdown(f"**{m}** (confidence: {ma.confidence})\n\n{ma.answer}")
 
-# Q&A
-if ask_btn:
+# Handle user Q&A
+if ask_btn and question_input:
     if not st.session_state.retriever:
         st.warning("Upload a PDF first.")
-    elif not question_input.strip():
-        st.warning("Enter a question.")
     else:
-        with st.spinner("Querying models..."):
-            final, per_model = get_verified_response(question_input, st.session_state.retriever, st.session_state.chains, st.session_state.reconciler)
-        st.subheader("✅ Verified Answer")
+        final, per_model = get_verified_response(question_input, st.session_state.retriever, st.session_state.chains, st.session_state.reconciler)
+        st.subheader("Answer")
         st.markdown(final)
-        if st.checkbox("Show per-model answers", key="show_per_model_q"):
+        with st.expander("See per-model answers"):
             for m, ma in per_model.items():
                 st.markdown(f"**{m}** (confidence: {ma.confidence})\n\n{ma.answer}")
