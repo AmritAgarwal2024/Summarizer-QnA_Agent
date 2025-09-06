@@ -1,5 +1,3 @@
-# NO LONGER NEEDED: The SQLite fix is removed.
-
 import streamlit as st
 import os
 import tempfile
@@ -18,6 +16,7 @@ load_local_api_keys()
 # --- Page Config & State ---
 st.set_page_config(page_title="Finanlyze AI (Local)", layout="wide", page_icon="📊")
 
+# --- STATE MANAGEMENT INITIALIZATION ---
 if "app_state" not in st.session_state:
     st.session_state.app_state = {
         "retriever": None,
@@ -47,7 +46,10 @@ with st.sidebar:
                     pdf_path = tfile.name
                 
                 st.session_state.app_state["ticker"] = ticker_input
-                st.session_state.app_state["retriever"] = create_vectorstore_local(pdf_path) # <-- Correct function call
+                
+                # Caching at the app level using session state
+                if st.session_state.app_state["retriever"] is None:
+                    st.session_state.app_state["retriever"] = create_vectorstore_local(pdf_path)
                 
                 if st.session_state.app_state["retriever"]:
                     chains, reconciler = initialize_models_and_chains(st.session_state.app_state["retriever"], model_selection)
